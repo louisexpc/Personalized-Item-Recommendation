@@ -1,0 +1,3 @@
+val_n : 1
+neg_mode: "fixed"
+neg_sample_num: 3
