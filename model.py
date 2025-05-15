@@ -29,6 +29,19 @@ class BPRDataset(Dataset):
     def __getitem__(self, idx):
         return self.users[idx], self.pos_items[idx], self.neg_items[idx]
 
+class PairWiseDataset(Dataset):
+    def __init__(self, data):
+    
+        self.users = torch.tensor([d[0] for d in data], dtype=torch.long)
+        self.pos_items = torch.tensor([d[1] for d in data], dtype=torch.long)
+        
+
+    def __len__(self):
+        return len(self.users)
+
+    def __getitem__(self, idx):
+        return self.users[idx], self.pos_items[idx]
+
 class LFM(nn.Module):
     def __init__(self, num_users:int, num_items:int, num_factors:int):
         super(LFM, self).__init__()

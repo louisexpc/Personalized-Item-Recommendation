@@ -7,7 +7,7 @@ from config import load_config, Config
 from model import LFM
 
 from preprocessing import load_and_preprocessing
-from train import train_bpr_model, train_bce_model, predict_top_k_for_all_users
+from train import train_bpr_model, train_bce_model, predict_top_k_for_all_users, train_bpr_model_with_hard_negative_sampling
 
 def main():
     start_overall_time = time.time()
@@ -51,9 +51,17 @@ def main():
         model_bpr = LFM(num_users, num_items, train_config.latent_factors).to(device)
 
         # --- 3. Training (BPR) ---
-        trained_model_bpr = train_bpr_model(
+        # trained_model_bpr = train_bpr_model(
+        #     model=model_bpr,
+        #     train_data=bpr_train_data,
+        #     train_pos_dict=train_pos_dict,
+        #     val_pos_dict=val_pos_dict,
+        #     num_items=num_items,
+        #     train_config=train_config,
+        # )
+        trained_model_bpr = train_bpr_model_with_hard_negative_sampling(
             model=model_bpr,
-            train_data=bpr_train_data,
+            train_mapping= train_mapping,
             train_pos_dict=train_pos_dict,
             val_pos_dict=val_pos_dict,
             num_items=num_items,
