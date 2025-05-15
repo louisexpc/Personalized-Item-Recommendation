@@ -27,6 +27,13 @@ def train_bce_model(model, train_data,train_pos_dict,val_pos_dict,num_items, tra
 
     model.to(device)
 
+    """Update : Best Model Saving and Early Stop"""
+    best_map = 0.0
+    best_state = None
+
+    patience = 5
+    counter = 0
+
     print("\nTraining BCE Model...")
     for epoch in range(num_epochs):
         model.train()
@@ -44,7 +51,7 @@ def train_bce_model(model, train_data,train_pos_dict,val_pos_dict,num_items, tra
         avg_epoch_loss = epoch_loss / len(dataloader)
         epoch_duration = time.time() - start_time
 
-        if (epoch + 1) % 2 == 0 : # Evaluate every epoch, adjust as needed
+        if (epoch + 1) % 1 == 0 :
             val_map_score = map_at_k(
                 model=model,
                 train_pos_dict=train_pos_dict,
@@ -53,10 +60,21 @@ def train_bce_model(model, train_data,train_pos_dict,val_pos_dict,num_items, tra
                 device=device,
                 top_k=top_k
             )
-
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_epoch_loss:.4f}, Val MAP@{top_k}: {val_map_score:.4f}, Time: {epoch_duration:.2f}s")
+
+            if val_map_score > best_map:
+                best_map, best_state = val_map_score, model.state_dict()
+                counter = 0
+            else:
+                counter+=1
+
+            if  counter >= patience:
+                print(f"Early Stopping at epoch {epoch}, Best Val MAP@{top_k}: {best_map:.4f}")
+                break
         else:
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_epoch_loss:.4f}, Time: {epoch_duration:.2f}s")
+        
+    model.load_state_dict(best_state)
 
     return model
 
@@ -67,15 +85,23 @@ def train_bpr_model(model, train_data,train_pos_dict,val_pos_dict,num_items, tra
     batch_size = train_config.batch_size
     weight_decay = train_config.weight_decay
     top_k = train_config.top_k
+    margin = train_config.margin
     
     device = torch.device(train_config.device)
 
     dataset = BPRDataset(train_data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    criterion = BPRLoss()
+    criterion = BPRLoss(margin)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     model.to(device)
+
+    """Update : Best Model Saving and Early Stop"""
+    best_map = 0.0
+    best_state = None
+
+    patience = 5
+    counter = 0
 
     print("\nTraining BPR Model...")
     for epoch in range(num_epochs):
@@ -100,7 +126,7 @@ def train_bpr_model(model, train_data,train_pos_dict,val_pos_dict,num_items, tra
 
         avg_epoch_loss = epoch_loss / len(dataloader)
         epoch_duration = time.time() - start_time
-        if (epoch + 1) % 2 == 0: # Evaluate every epoch
+        if (epoch + 1) % 1 == 0: # Evaluate every epoch
             val_map_score = map_at_k(
                 model=model,
                 train_pos_dict=train_pos_dict,
@@ -111,8 +137,20 @@ def train_bpr_model(model, train_data,train_pos_dict,val_pos_dict,num_items, tra
             )
             
             print(f"Epoch {epoch+1}/{num_epochs}, BPR Loss: {avg_epoch_loss:.4f}, Val MAP@{top_k}: {val_map_score:.4f}, Time: {epoch_duration:.2f}s")
+
+            if val_map_score > best_map:
+                best_map, best_state = val_map_score, model.state_dict()
+                counter = 0
+            else:
+                counter+=1
+
+            if  counter >= patience:
+                print(f"Early Stopping at epoch {epoch}, Best Val MAP@{top_k}: {best_map:.4f}")
+                break
         else:
             print(f"Epoch {epoch+1}/{num_epochs}, BPR Loss: {avg_epoch_loss:.4f}, Time: {epoch_duration:.2f}s")
+
+    model.load_state_dict(best_state)
     return model
 
 def average_precision_at_k(actual_items, predicted_item_scores, k):

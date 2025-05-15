@@ -149,7 +149,9 @@ def negative_sampling(
         if neg_mode == "fixed":
             bpr_num_neg_sample = neg_sample_num * len(items_idx_list)
             if len(neg_item_candidates) < bpr_num_neg_sample:
-                raise ValueError("Don't have enought to do BPR even sampling")
+                # raise ValueError("Don't have enought to do BPR even sampling")
+                print("Don't have enought to do BPR even sampling")
+                continue
             
 
             neg_samples = rng.choice(neg_item_candidates, size=bpr_num_neg_sample, replace=False)
@@ -185,7 +187,7 @@ def splitting(train_mapping:dict, val_n : int = 5, seed:int = 42):
     - val_n : 採樣數量
 
     Return:
-    - train_pos_dict : defaultdict(list) with out dulplicated elements
+    - train_pos_dict : defaultdict(list) without dulplicated elements
     - val_pos_dict : defaultdict(set)
     Hint: 所有切分完的 data 都是經過 mapping 的 idx
     """
