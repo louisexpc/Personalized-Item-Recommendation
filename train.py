@@ -13,7 +13,7 @@ from numpy.random import default_rng
 
 from model import BCEDataset,BPRDataset,BPRLoss,BCELoss, PairWiseDataset
 
-def train_bpr_model_with_hard_negative_sampling(
+def train_bpr_model_with_hard_negative_sampling_vectorize(
         model,
         train_mapping :DefaultDict[int, Set],
         train_pos_dict: DefaultDict[int, List], 
@@ -33,6 +33,146 @@ def train_bpr_model_with_hard_negative_sampling(
     num_hard_neg_samples = train_config.num_hard_neg_samples
     num_random_neg_samples = train_config.num_random_neg_samples
     rng = default_rng(42)
+    
+
+    """Prepare Dataset """
+    train_pos_list = train_pos_list = [
+        (user_idx, item_idx)
+        for user_idx, items_idx_list_for_user in train_pos_dict.items()
+        for item_idx in items_idx_list_for_user
+    ]
+
+    print(f"BPR hard negative sampling :\n Number of Pos Interactions: {len(train_pos_list)}")
+    
+    dataset = PairWiseDataset(train_pos_list)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    criterion =  BPRLoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay) # Added weight_decay for regularization
+
+    all_item_idx_list = set(range(num_items))
+
+    model.to(device)
+    best_map = 0.0
+    best_state = None
+
+    patience = 5
+    counter = 0
+    print("\nTraining BPR Model with hard negative sampling vectorization")
+    for epoch in range(num_epochs):
+        epoch_loss = 0.0
+        start_time = time.time()
+        for users, pos_items in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}"):
+            batch_size = users.size(0)
+            optimizer.zero_grad()
+
+            # neg_items_index = torch.randint(0, num_items, (batch_size, num_candidate_neg_samples), device=device) #(B,M)
+            neg_items_index = []
+            for user_idx in users.tolist():
+                neg_candidate = list(all_item_idx_list - set(train_mapping[int(user_idx)]))
+                neg_items = rng.choice(neg_candidate,size=num_candidate_neg_samples,replace=False)
+                neg_items_index.append(neg_items)
+            
+            neg_items_index = np.array(neg_items_index)
+            neg_items_index = torch.tensor(neg_items_index,dtype=torch.long, device= device)
+
+            users_expanded = users.unsqueeze(1).expand(-1, num_candidate_neg_samples) #(B,M)
+
+            
+            with torch.no_grad():
+                users_expanded_flatten = users_expanded.reshape(-1) #(B*M,)
+                neg_items_index_flatten = neg_items_index.reshape(-1)#(B*M,)
+                candidate_neg_scores = model(users_expanded_flatten,neg_items_index_flatten).view(batch_size, num_candidate_neg_samples) #(B,M)
+
+            actual_k_hard = min(num_hard_neg_samples, num_candidate_neg_samples)
+            _, hard_indices_in_candidates = torch.topk(candidate_neg_scores, k=actual_k_hard, dim=1) # (B, N_hard)
+            hard_neg_items = torch.gather(neg_items_index, 1, hard_indices_in_candidates) # (B, N_hard)
+
+            if num_random_neg_samples > 0:
+                #random_selection_indices = torch.randint(0, num_candidate_neg_samples, (batch_size, num_random_neg_samples), device=device)
+                random_selection_index =  []
+                for i,user_idx in enumerate(users.tolist()):
+                    random_neg_candidate = list(all_item_idx_list - train_mapping[int(user_idx)] - set(hard_neg_items[i,:].tolist()))
+                    random_neg_items = rng.choice(random_neg_candidate,size= num_random_neg_samples,replace=False)
+                    random_selection_index.append(random_neg_items)
+                random_selection_index = np.array(random_selection_index)
+                random_selection_index = torch.tensor(random_selection_index,dtype=torch.long, device= device)
+
+                #random_neg_items = torch.gather(neg_items_index, 1, random_selection_index) # (B, N_random)
+                final_selected_neg_items = torch.cat([hard_neg_items, random_selection_index], dim=1) # (B, N_hard + N_random)
+            else:
+                final_selected_neg_items = hard_neg_items # (B, N_hard)
+
+            
+            num_selected_negs_per_pos = final_selected_neg_items.size(1)
+            model.train()
+            optimizer.zero_grad()
+            pos_scores = model(users, pos_items) # (B)
+            pos_scores_expanded = pos_scores.unsqueeze(1).expand(-1, num_selected_negs_per_pos) # (B, N_hard + N_random)
+
+            users_final_expanded = users.unsqueeze(1).expand(-1, num_selected_negs_per_pos) 
+
+            selected_neg_scores = model(
+                users_final_expanded.reshape(-1),
+                final_selected_neg_items.reshape(-1)
+            ).view(batch_size, num_selected_negs_per_pos)
+
+            loss = criterion(pos_scores_expanded.reshape(-1), selected_neg_scores.reshape(-1))
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+
+        avg_epoch_loss = epoch_loss / len(dataloader)
+        epoch_duration = time.time() - start_time
+
+        if (epoch + 1) % 1 == 0 :
+            val_map_score = map_at_k(
+                model=model,
+                train_pos_dict=train_pos_dict,
+                val_pos_dict=val_pos_dict,
+                num_items=num_items,
+                device=device,
+                top_k=top_k
+            )
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_epoch_loss:.4f}, Val MAP@{top_k}: {val_map_score:.4f}, Time: {epoch_duration:.2f}s")
+
+            if val_map_score > best_map:
+                best_map, best_state = val_map_score, model.state_dict()
+                counter = 0
+            else:
+                counter+=1
+
+            if  counter >= patience:
+                print(f"Early Stopping at epoch {epoch}, Best Val MAP@{top_k}: {best_map:.4f}")
+                break
+        else:
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_epoch_loss:.4f}, Time: {epoch_duration:.2f}s")
+        
+    model.load_state_dict(best_state)
+
+    return model
+
+
+
+def train_bpr_model_with_hard_negative_sampling(
+        model,
+        train_mapping :DefaultDict[int, Set],
+        train_pos_dict: DefaultDict[int, List], 
+        val_pos_dict: DefaultDict[int, Set] ,
+        num_items:int,
+        train_config,
+    ):
+    # Initialization
+    num_epochs = train_config.epochs
+    lr = train_config.lr
+    batch_size = train_config.batch_size
+    weight_decay = train_config.weight_decay
+    top_k = train_config.top_k
+    device = torch.device(train_config.device)
+    """Update: Hard Negative Sampling"""
+    num_candidate_neg_samples = train_config.num_candidate_neg_samples
+    num_hard_neg_samples = train_config.num_hard_neg_samples
+    num_random_neg_samples = train_config.num_random_neg_samples
+    
 
     """Prepare Dataset """
     train_pos_list = train_pos_list = [

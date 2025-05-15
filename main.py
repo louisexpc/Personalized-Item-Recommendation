@@ -7,7 +7,7 @@ from config import load_config, Config
 from model import LFM
 
 from preprocessing import load_and_preprocessing
-from train import train_bpr_model, train_bce_model, predict_top_k_for_all_users, train_bpr_model_with_hard_negative_sampling
+from train import train_bpr_model, train_bce_model, predict_top_k_for_all_users, train_bpr_model_with_hard_negative_sampling, train_bpr_model_with_hard_negative_sampling_vectorize
 
 def main():
     start_overall_time = time.time()
@@ -59,7 +59,7 @@ def main():
         #     num_items=num_items,
         #     train_config=train_config,
         # )
-        trained_model_bpr = train_bpr_model_with_hard_negative_sampling(
+        trained_model_bpr = train_bpr_model_with_hard_negative_sampling_vectorize(
             model=model_bpr,
             train_mapping= train_mapping,
             train_pos_dict=train_pos_dict,
