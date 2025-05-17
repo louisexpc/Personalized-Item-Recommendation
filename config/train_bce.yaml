@@ -1,6 +1,6 @@
 device : "cpu"
-latent_factors : 100
-epochs: 10
+latent_factors : 128
+epochs: 20
 lr : 0.001
 batch_size : 512
 weight_decay: 0.00001

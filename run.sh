@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# run.sh
-
-# 確保 train.csv 在同一個目錄或者提供正確的路徑
-# 檢查 Python 是否可用
 if ! command -v python &> /dev/null
 then
     echo "python could not be found, trying python3"

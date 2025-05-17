@@ -18,12 +18,16 @@ def load_and_preprocessing(
     Parameter:
     - data_path: path of train.csv
     - confing: object of Confing with parameters:
-        - val_n : 5 隨機篩選作為 validation 的樣本數
-        - NEG_SAMPLES_BCE : 1 # 每個正樣本對應的負樣本數量 (BCE)
-        - NEG_SAMPLES_BPR : 1 # 每個正樣本對應的負樣本數量 (BPR，用於生成三元組)
-        - VALIDATION_SPLIT_RATIO = 0.1 # 或者每個使用者最後N筆資料
-        - TOP_K : 50
+        - split_mode: "ratio"
+            - "ratio": 按照比例切分 val 數量，需搭配 val_ratio
+            - "fixed": 按照數量切分 val, 需搭配 val_n
+        - val_ratio: 0.1
+        - val_n : 1
+        - neg_mode: "fixed"
+         -neg_sample_num: 3
     """
+
+
     print("Starting data preprocessing...")
     df = pd.read_csv(data_path, dtype={
         "UserId": "str",
@@ -47,10 +51,10 @@ def load_and_preprocessing(
     idx_to_user = {i: user_id for user_id, i in user_to_idx.items()}
     idx_to_item = {i: item_id for item_id, i in item_to_idx.items()}
 
-    save_pkl(user_to_idx, os.path.join("data","user_to_idx.pkl"))
-    save_pkl(item_to_idx, os.path.join("data","item_to_idx.pkl"))
-    save_pkl(idx_to_user, os.path.join("data","idx_to_user.pkl"))
-    save_pkl(idx_to_item, os.path.join("data","idx_to_item.pkl"))
+    # save_pkl(user_to_idx, os.path.join("data","user_to_idx.pkl"))
+    # save_pkl(item_to_idx, os.path.join("data","item_to_idx.pkl"))
+    # save_pkl(idx_to_user, os.path.join("data","idx_to_user.pkl"))
+    # save_pkl(idx_to_item, os.path.join("data","idx_to_item.pkl"))
 
     num_users = len(unique_users)
     num_items = len(unique_items)
@@ -71,11 +75,11 @@ def load_and_preprocessing(
         item_idx = [item_to_idx[item_id] for item_id in origin_item_ids]
 
         train_mapping[user_idx].update(set(item_idx))
-    save_pkl(train_mapping, os.path.join("data","train_mapping.pkl"))
+    # save_pkl(train_mapping, os.path.join("data","train_mapping.pkl"))
     # for uid,items in origin_preprocessd.items():
     #     print(f"{uid} (type:{type(uid)}):\n{items}")
 
-    train_pos_dict, val_pos_dict = splitting(train_mapping=train_mapping, val_n=data_config.val_n,seed=42)
+    train_pos_dict, val_pos_dict = splitting(train_mapping=train_mapping, val_n=data_config.val_n,seed=42,split_mode=data_config.split_mode, val_ratio=data_config.val_ratio)
 
     bce_train_data, bpr_train_data = negative_sampling(
         train_mapping=train_mapping,
@@ -149,7 +153,9 @@ def negative_sampling(
         if neg_mode == "fixed":
             bpr_num_neg_sample = neg_sample_num * len(items_idx_list)
             if len(neg_item_candidates) < bpr_num_neg_sample:
-                raise ValueError("Don't have enought to do BPR even sampling")
+                # raise ValueError("Don't have enought to do BPR even sampling")
+                print("Don't have enought to do BPR even sampling")
+                continue
             
 
             neg_samples = rng.choice(neg_item_candidates, size=bpr_num_neg_sample, replace=False)
@@ -177,37 +183,57 @@ def negative_sampling(
 
 
 
-def splitting(train_mapping:dict, val_n : int = 5, seed:int = 42):
+def splitting(train_mapping:dict, val_n : int = 5, seed:int = 42 , split_mode:str = "fixed", val_ratio:float = 0.1):
     """
     Random Pick n item for validation
     Paratmeter:
     - train_mapping : `defaultdict(set)` : 型態轉換完成，做完 item id mapping 並且移除重複值
     - val_n : 採樣數量
+    - split_mode:
+        - fixed:
+        - ratio:
 
     Return:
-    - train_pos_dict : defaultdict(list) with out dulplicated elements
+    - train_pos_dict : defaultdict(list) without dulplicated elements
     - val_pos_dict : defaultdict(set)
     Hint: 所有切分完的 data 都是經過 mapping 的 idx
     """
-
+    print(f"Start Spliting Train/Validation with mode :{split_mode}")
     random.seed(seed)
 
     train_pos_dict = defaultdict(list)
     val_pos_dict = defaultdict(set)
 
     for user_idx, item_idx_set in train_mapping.items():
-        if len(item_idx_set) <= val_n:
-            
-            train_pos_dict[user_idx] = list(item_idx_set)
-        else:
-            current_user_items_idx = list(item_idx_set)
-            random.shuffle(current_user_items_idx)
+        if split_mode == "fixed":
+            if len(item_idx_set) <= val_n:
+                
+                train_pos_dict[user_idx] = list(item_idx_set)
+            else:
+                current_user_items_idx = list(item_idx_set)
+                random.shuffle(current_user_items_idx)
 
-            val_items = current_user_items_idx[-val_n:]
-            train_items = current_user_items_idx[:-val_n]
-            train_pos_dict[user_idx] = train_items
-            
-            val_pos_dict[user_idx].update(set(val_items))
+                val_items = current_user_items_idx[-val_n:]
+                train_items = current_user_items_idx[:-val_n]
+                train_pos_dict[user_idx] = train_items
+                
+                val_pos_dict[user_idx].update(set(val_items))
+        elif split_mode == "ratio":
+            val_n = int(len(item_idx_set) * val_ratio)
+
+            if val_n<=0:
+                train_pos_dict[user_idx] = list(item_idx_set)
+            else:
+                current_user_items_idx = list(item_idx_set)
+                random.shuffle(current_user_items_idx)
+
+                val_items = current_user_items_idx[-val_n:]
+                train_items = current_user_items_idx[:-val_n]
+                train_pos_dict[user_idx] = train_items
+                
+                val_pos_dict[user_idx].update(set(val_items))
+        else:
+            raise ValueError(f"Spliting mode {split_mode} not found, shoud be 'fixed' or 'ratio' .")
     
     return train_pos_dict, val_pos_dict
 
