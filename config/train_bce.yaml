@@ -1,5 +1,5 @@
 device : "cpu"
-latent_factors : 400
+latent_factors : 128
 epochs: 20
 lr : 0.001
 batch_size : 512

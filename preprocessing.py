@@ -51,10 +51,10 @@ def load_and_preprocessing(
     idx_to_user = {i: user_id for user_id, i in user_to_idx.items()}
     idx_to_item = {i: item_id for item_id, i in item_to_idx.items()}
 
-    save_pkl(user_to_idx, os.path.join("data","user_to_idx.pkl"))
-    save_pkl(item_to_idx, os.path.join("data","item_to_idx.pkl"))
-    save_pkl(idx_to_user, os.path.join("data","idx_to_user.pkl"))
-    save_pkl(idx_to_item, os.path.join("data","idx_to_item.pkl"))
+    # save_pkl(user_to_idx, os.path.join("data","user_to_idx.pkl"))
+    # save_pkl(item_to_idx, os.path.join("data","item_to_idx.pkl"))
+    # save_pkl(idx_to_user, os.path.join("data","idx_to_user.pkl"))
+    # save_pkl(idx_to_item, os.path.join("data","idx_to_item.pkl"))
 
     num_users = len(unique_users)
     num_items = len(unique_items)
@@ -75,7 +75,7 @@ def load_and_preprocessing(
         item_idx = [item_to_idx[item_id] for item_id in origin_item_ids]
 
         train_mapping[user_idx].update(set(item_idx))
-    save_pkl(train_mapping, os.path.join("data","train_mapping.pkl"))
+    # save_pkl(train_mapping, os.path.join("data","train_mapping.pkl"))
     # for uid,items in origin_preprocessd.items():
     #     print(f"{uid} (type:{type(uid)}):\n{items}")
 
